@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<launch>
+ <!-- Transformation Configuration ... Setting Up the Relationships Between Coordinate Frames -->
+  <node pkg="tf" type="static_transform_publisher" name="world_to_map" args="0 0 0 0 0 0 world map 50"/>
+  <node pkg="tf" type="static_transform_publisher" name="base_link_broadcaster" args="0 0 0.05 0 0 0 base_footprint base_link 50" />
+
+  <!-- URDF file for the mobile manipulator -->
+  <param name="robot_description" textfile="$(find mobile_manipulator_body)/urdf/mobile_manipulator.urdf" />
+
+  <!-- Gazebo post office environment -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="/home/boh/boh_ws/src/mobile_manipulator/worlds/face.world"/>
+  </include>
+    <!-- Extended Kalman Filter from robot_pose_ekf Node-->
+  <!-- Subscribe: /odom, /imu_data, /vo -->
+  <!-- Publish: /robot_pose_ekf/odom_combined -->
+  <remap from="odom" to="/base_truth_odom" />
+  <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf">
+    <param name="output_frame" value="odom"/>s
+    <param name="base_footprint_frame" value="base_footprint"/>
+    <param name="freq" value="50.0"/>
+    <param name="sensor_timeout" value="1.0"/>
+    <param name="odom_used" value="true"/>
+    <param name="imu_used" value="false"/>
+    <param name="vo_used" value="false"/>
+    <param name="gps_used" value="false"/>
+    <param name="debug" value="false"/>
+    <param name="self_diagnose" value="false"/>
+  </node>
+
+  <!-- Spawn the robot model -->
+  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -x 0 -y 0 -z 1 -model mobile_manipulator" />
+  
+  <!-- Load robotic arm controller and parameters -->
+  <rosparam command="load" file="$(find mobile_manipulator_body)/config/arm_control.yaml" />
+  <node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller" respawn="false" output="screen"/>
+  
+  <!-- Load wheeled base controller and parameters --> 
+  	<rosparam command="load" file="$(find mobile_manipulator_body)/config/joint_state_controller.yaml" />
+  <node name="joint_state_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn joint_state_controller" respawn="false" output="screen"/>
+  <rosparam command="load" file="$(find mobile_manipulator_body)/config/control.yaml" />
+  <node name="base_controller_spawner" pkg="controller_manager" type="spawner" args="robot_base_joint_publisher robot_base_velocity_controller"/>
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="false" output="screen"/>
+  <node pkg="twist_mux" type="twist_mux" name="twist_mux">
+    <rosparam command="load" file="$(find mobile_manipulator_body)/config/twist_mux.yaml" />
+    <remap from="cmd_vel_out" to="robot_base_velocity_controller/cmd_vel"/>
+  </node>
+
+  <!-- Including in another launch file -->
+  <include file="$(find foxglove_bridge)/launch/foxglove_bridge.launch">
+    <arg name="port" value="8765" />
+    <!-- ... other arguments ... -->
+  </include>
+
+</launch>
